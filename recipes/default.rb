@@ -108,6 +108,10 @@ application "docker-registry" do
   symlinks "config.yml" => "config/config.yml"
 
   before_migrate do
+    execute "#{::File.join(node['docker-registry']['install_dir'], "env", node['docker-registry']['revision'])}/bin/pip install ." do
+      cwd new_resource.release_path
+    end
+
     template "#{new_resource.path}/shared/config.yml" do
       source "config.yml.erb"
       mode 0440
@@ -129,15 +133,17 @@ application "docker-registry" do
   gunicorn do
     only_if { node['docker-registry']['application_server'] }
 
-    requirements "requirements.txt"
     max_requests node['docker-registry']['max_requests']
     timeout node['docker-registry']['timeout']
     port node['docker-registry']['internal_port']
     workers node['docker-registry']['workers']
     worker_class "gevent"
-    app_module "wsgi:application"
+    app_module "docker_registry.wsgi:application"
     virtualenv ::File.join(node['docker-registry']['install_dir'], "env", node['docker-registry']['revision'])
-    environment :SETTINGS_FLAVOR => node['docker-registry']['flavor']
+    environment(
+      :SETTINGS_FLAVOR => node['docker-registry']['flavor'],
+      :DOCKER_REGISTRY_CONFIG => "#{::File.join(node['docker-registry']['install_dir'], 'shared/config.yml')}"
+    )
   end
 
   nginx_load_balancer do
